@@ -140,9 +140,15 @@ def test_scenario_5_tool_execution_error(mock_interface):
     analyzer = LLMAnalyzer(mock_mode=True)
     agent = AutonomousDebuggerAgent(interface=mock_interface, analyzer=analyzer)
 
-    job = mock_interface.create_job("non_existent_workspace_12345")
-    res = agent.run_debug_job(job["job_id"], "non_existent_workspace_12345", "Bug")
+    ws_name = "non_existent_workspace_12345"
+    job = mock_interface.create_job(ws_name)
+    try:
+        res = agent.run_debug_job(job["job_id"], ws_name, "Bug")
+        assert res["success"] is False
+        assert "error" in res
+        assert mock_interface.get_job(job["job_id"])["status"] == "failed"
+    finally:
+        ws_path = get_workspace_root() / ws_name
+        if ws_path.exists():
+            shutil.rmtree(ws_path, ignore_errors=True)
 
-    assert res["success"] is False
-    assert "error" in res
-    assert mock_interface.get_job(job["job_id"])["status"] == "failed"

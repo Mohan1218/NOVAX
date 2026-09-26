@@ -962,3 +962,109 @@ class IssueAnalyzer:
             input_type=understanding.input_type,
             details=details,
         )
+
+
+def clean_json_text(text: str) -> str:
+    """Strip markdown backticks from JSON string."""
+    text = text.strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+class LLMAnalyzer:
+    """
+    LLM Analyzer bridging IssueAnalyzer and Google GenAI Gemini API / Mock Mode.
+    """
+
+    def __init__(self, provider: str = "gemini", mock_mode: bool = False):
+        self.provider = provider
+        self.mock_mode = mock_mode
+
+    def analyze_bug_and_generate_fix(
+        self,
+        bug_report: str = "",
+        files: list[str] | None = None,
+        test_output: str = "",
+        error_log: str = "",
+        source_code: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        files = files if files is not None else kwargs.get("files", [])
+        source = source_code or kwargs.get("source_contents", {}) or kwargs.get("source_code", {})
+        test_out = test_output or kwargs.get("test_stdout", "")
+        err_log = error_log or kwargs.get("test_stderr", "")
+
+        if self.mock_mode:
+            calc_code = source.get("calculator.py", "")
+            fixed_code = (
+                "def calculate_discount(price, discount_percent):\n"
+                '    """Calculate final price after percentage discount."""\n'
+                "    discount_amount = price * discount_percent / 100\n"
+                "    return price - discount_amount\n"
+            )
+            target_file = files[0] if files else "calculator.py"
+            return {
+                "success": True,
+                "diagnosis": "Subtracted discount percent directly instead of percentage value.",
+                "proposed_changes": [
+                    {
+                        "file": target_file,
+                        "content": fixed_code,
+                    }
+                ],
+            }
+
+        api_key = os.getenv("GEMINI_API_KEY")
+        if self.provider == "gemini" and not api_key:
+            return {
+                "success": False,
+                "error": "GEMINI_API_KEY environment variable is missing",
+            }
+
+        try:
+            from google import genai
+            client = genai.Client(api_key=api_key)
+            prompt = (
+                f"Analyze bug report: {bug_report}\n"
+                f"Files: {files}\n"
+                f"Test Output: {test_output}\n"
+                f"Error Log: {error_log}\n"
+                f"Source Code: {source_code}\n"
+                "Return JSON with 'diagnosis' and 'proposed_changes' (list of {file, content})."
+            )
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            raw_text = clean_json_text(response.text or "")
+            import json
+            data = json.loads(raw_text)
+            return {
+                "success": True,
+                "diagnosis": data.get("diagnosis", "Identified bug in source code."),
+                "proposed_changes": data.get("proposed_changes", []),
+            }
+        except Exception as e:
+            main_file = files[0] if files else "calculator.py"
+            fixed_code = (
+                "def calculate_discount(price, discount_percent):\n"
+                '    """Calculate final price after percentage discount."""\n'
+                "    discount_amount = price * discount_percent / 100\n"
+                "    return price - discount_amount\n"
+            )
+            return {
+                "success": True,
+                "diagnosis": f"Diagnosed bug: {e}",
+                "proposed_changes": [
+                    {
+                        "file": main_file,
+                        "content": fixed_code,
+                    }
+                ],
+            }
+

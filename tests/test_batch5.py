@@ -21,7 +21,7 @@ if hasattr(sys.stderr, "reconfigure"):
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-DEMO_ROOT = os.path.join(PROJECT_ROOT, "demo_project")
+DEMO_ROOT = os.path.join(PROJECT_ROOT, "workspace", "demo_project") if os.path.exists(os.path.join(PROJECT_ROOT, "workspace", "demo_project")) else os.path.join(PROJECT_ROOT, "demo_project")
 
 BUGGY_CALCULATOR = """\"\"\"Calculator module — demo project for agent testing.
 
@@ -224,6 +224,7 @@ async def test_agent_manual():
     Simulate what the agent does step-by-step WITHOUT requiring an LLM API key.
     This proves each tool works in the actual agent workflow.
     """
+    reset_calculator()
     print("\n" + "=" * 60)
     print("STEP 4: FULL AGENT WORKFLOW (tool-by-tool simulation)")
     print("=" * 60)

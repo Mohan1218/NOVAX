@@ -40,3 +40,12 @@ test_regex2.py
 
 # test_sandbox (ephemeral sandbox files)
 test_sandbox/
+
+# Frontend build & dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Workspace git folders
+workspace/*/.git
+

@@ -13,9 +13,9 @@ import {
   Sparkles,
   AlertTriangle,
   RefreshCw,
-  ChevronRight,
   Cpu
 } from 'lucide-react';
+import { api } from './api';
 
 export default function App() {
   const [workspace, setWorkspace] = useState('demo_project');
@@ -28,8 +28,30 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('diff');
   const [errorMsg, setErrorMsg] = useState(null);
   const [resetSuccess, setResetSuccess] = useState(false);
-  
+
+  // Dynamic code content state
+  const [originalCode, setOriginalCode] = useState('');
+  const [fixedCode, setFixedCode] = useState('');
+  const [gitDiffContent, setGitDiffContent] = useState('');
+
   const logsEndRef = useRef(null);
+
+  // Fetch initial/original source code from backend API
+  const fetchOriginalCode = async (targetWorkspace = workspace) => {
+    try {
+      const data = await api.readFile(targetWorkspace, 'calculator.py');
+      if (data && data.content) {
+        setOriginalCode(data.content);
+      }
+    } catch (err) {
+      console.warn('Could not fetch original code:', err.message);
+    }
+  };
+
+  // Fetch original code on workspace change or mount
+  useEffect(() => {
+    fetchOriginalCode(workspace);
+  }, [workspace]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -45,22 +67,40 @@ export default function App() {
     let isMounted = true;
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch(`/api/jobs/${jobId}`);
-        if (!res.ok) {
-          throw new Error(`Failed to fetch job status: ${res.statusText}`);
-        }
-        const data = await res.json();
+        const jobData = await api.getJobStatus(jobId);
         if (isMounted) {
-          const jobData = data.job || data;
           setJobState(jobData);
-          if (jobData.status === 'completed' || jobData.status === 'failed') {
+
+          if (jobData.status === 'completed' || jobData.status === 'failed' || jobData.status === 'cancelled') {
             clearInterval(pollInterval);
+            
+            // If verified successfully, fetch actual fixed code and diff from backend
+            if (jobData.result?.verified) {
+              try {
+                const fixedData = await api.readFile(workspace, 'calculator.py');
+                if (fixedData && fixedData.content) {
+                  setFixedCode(fixedData.content);
+                }
+              } catch (e) {
+                console.error('Failed to load fixed code:', e);
+              }
+
+              try {
+                const diffData = await api.getGitDiff(workspace);
+                if (diffData && diffData.diff) {
+                  setGitDiffContent(diffData.diff);
+                }
+              } catch (e) {
+                console.error('Failed to load git diff:', e);
+              }
+            }
           }
         }
       } catch (err) {
         if (isMounted) {
           console.error('Polling error:', err);
           setErrorMsg(err.message);
+          clearInterval(pollInterval);
         }
       }
     }, 800);
@@ -69,7 +109,7 @@ export default function App() {
       isMounted = false;
       clearInterval(pollInterval);
     };
-  }, [jobId]);
+  }, [jobId, workspace]);
 
   const handleStartDebugging = async (e) => {
     e.preventDefault();
@@ -78,23 +118,16 @@ export default function App() {
     setIsStarting(true);
     setErrorMsg(null);
     setJobState(null);
+    setJobId(null);
     setResetSuccess(false);
+    setFixedCode('');
+    setGitDiffContent('');
+
+    // Save initial state of source file
+    await fetchOriginalCode(workspace);
 
     try {
-      const res = await fetch('/api/debug/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace,
-          bug_report: bugReport,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.detail || 'Failed to start debug job');
-      }
-
+      const data = await api.startDebugRun(workspace, bugReport);
       setJobId(data.job_id);
     } catch (err) {
       setErrorMsg(err.message);
@@ -107,24 +140,13 @@ export default function App() {
     setResetSuccess(false);
     setErrorMsg(null);
     try {
-      // Re-write initial buggy calculator code
-      const buggyCode = `def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n\ndef multiply(a, b):\n    return a * b\n\ndef divide(a, b):\n    if b == 0:\n        raise ValueError("Cannot divide by zero")\n    return a / b\n\ndef calculate_discount(price, discount_percent):\n    # BUG: Subtracting percent directly instead of calculating percentage\n    return price - discount_percent\n`;
-      
-      const res = await fetch('/api/execution/files/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace: 'demo_project',
-          file_path: 'calculator.py',
-          content: buggyCode,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Failed to reset calculator.py');
-      }
-
+      await api.resetDemoProject(workspace);
       setResetSuccess(true);
+      setJobId(null);
+      setJobState(null);
+      setFixedCode('');
+      setGitDiffContent('');
+      await fetchOriginalCode(workspace);
       setTimeout(() => setResetSuccess(false), 4000);
     } catch (err) {
       setErrorMsg(`Reset failed: ${err.message}`);
@@ -160,6 +182,14 @@ export default function App() {
     }
   };
 
+  const formatLogTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    if (typeof timestamp === 'number') {
+      return new Date(timestamp * 1000).toLocaleTimeString();
+    }
+    return new Date(timestamp).toLocaleTimeString();
+  };
+
   const isJobRunning = jobState && jobState.status === 'running';
 
   return (
@@ -171,7 +201,7 @@ export default function App() {
             <Bug size={24} color="#00f2fe" />
           </div>
           <div>
-            <h1>BugHunter AI</h1>
+            <h1>NOVAX BugHunter AI</h1>
             <p className="subtitle">Autonomous Software QA & Debugger Agent</p>
           </div>
         </div>
@@ -256,7 +286,7 @@ export default function App() {
 
               {resetSuccess && (
                 <div className="alert alert-success mt-3">
-                  <CheckCircle2 size={16} /> Demo project reset to buggy state!
+                  <CheckCircle2 size={16} /> Demo project reset to initial buggy state!
                 </div>
               )}
 
@@ -295,12 +325,12 @@ export default function App() {
               <div className="progress-section">
                 <div className="progress-label">
                   <span>Overall Progress</span>
-                  <span>{jobState.progress}%</span>
+                  <span>{jobState.progress ?? 0}%</span>
                 </div>
                 <div className="progress-bar-bg">
                   <div
                     className="progress-bar-fill"
-                    style={{ width: `${Math.min(100, Math.max(0, jobState.progress))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, jobState.progress ?? 0))}%` }}
                   />
                 </div>
               </div>
@@ -314,8 +344,8 @@ export default function App() {
                 {jobState.logs && jobState.logs.length > 0 ? (
                   jobState.logs.map((log, index) => (
                     <div key={index} className="log-entry">
-                      <span className="log-time">[{new Date(log.timestamp * 1000).toLocaleTimeString()}]</span>
-                      <span className="log-step">[{log.step}]</span>
+                      <span className="log-time">[{formatLogTimestamp(log.timestamp)}]</span>
+                      <span className="log-step">[{log.level || 'info'}]</span>
                       <span className="log-msg">{log.message}</span>
                     </div>
                   ))
@@ -362,18 +392,20 @@ export default function App() {
                 </div>
                 <div className="metric-box">
                   <span className="metric-label">Retries Used</span>
-                  <span className="metric-val">{jobState.result.retry_count} / 3</span>
+                  <span className="metric-val">
+                    {jobState.result.retries ?? jobState.result.retry_count ?? 0} / 3
+                  </span>
                 </div>
                 <div className="metric-box">
                   <span className="metric-label">Execution Time</span>
-                  <span className="metric-val">{jobState.result.duration_seconds || '0.0'}s</span>
+                  <span className="metric-val">
+                    {jobState.result.duration ?? jobState.result.duration_seconds ?? '0.0'}s
+                  </span>
                 </div>
                 <div className="metric-box">
-                  <span className="metric-label">Files Modified</span>
-                  <span className="metric-val">
-                    {jobState.result.modified_files?.length > 0
-                      ? jobState.result.modified_files.join(', ')
-                      : 'None'}
+                  <span className="metric-label">Diagnosis</span>
+                  <span className="metric-val text-truncate" title={jobState.result.diagnosis}>
+                    {jobState.result.diagnosis || 'Analyzed'}
                   </span>
                 </div>
               </div>
@@ -415,7 +447,7 @@ export default function App() {
                     <span>git diff (calculator.py)</span>
                   </div>
                   <pre className="code-viewer diff-viewer">
-                    {jobState?.result?.diff || jobState?.result?.patch_diff || (
+                    {gitDiffContent || jobState?.result?.diff || jobState?.result?.patch_diff || (
                       <span className="text-muted">No diff available. Run debugging to generate patch diff.</span>
                     )}
                   </pre>
@@ -428,8 +460,10 @@ export default function App() {
                     <span>Fixed Version: workspace/demo_project/calculator.py</span>
                   </div>
                   <pre className="code-viewer">
-                    {jobState?.result?.verified ? (
-                      `def add(a, b):\n    return a + b\n\ndef subtract(a, b):\n    return a - b\n\ndef multiply(a, b):\n    return a * b\n\ndef divide(a, b):\n    if b == 0:\n        raise ValueError("Cannot divide by zero")\n    return a / b\n\ndef calculate_discount(price, discount_percent):\n    discount_amount = price * discount_percent / 100\n    return price - discount_amount`
+                    {fixedCode ? (
+                      fixedCode
+                    ) : jobState?.result?.verified ? (
+                      <span className="text-muted">Loading fixed code from backend...</span>
                     ) : (
                       <span className="text-muted">Fixed code will appear here after a successful run.</span>
                     )}
@@ -440,26 +474,12 @@ export default function App() {
               {activeTab === 'original' && (
                 <div className="code-viewer-container">
                   <div className="code-header">
-                    <span>Original Version (Buggy): workspace/demo_project/calculator.py</span>
+                    <span>Original Version: workspace/demo_project/calculator.py</span>
                   </div>
                   <pre className="code-viewer">
-                    {`def add(a, b):
-    return a + b
-
-def subtract(a, b):
-    return a - b
-
-def multiply(a, b):
-    return a * b
-
-def divide(a, b):
-    if b == 0:
-        raise ValueError("Cannot divide by zero")
-    return a / b
-
-def calculate_discount(price, discount_percent):
-    # BUG: Subtracting percent directly instead of calculating percentage
-    return price - discount_percent`}
+                    {originalCode || (
+                      <span className="text-muted">Loading original file from backend...</span>
+                    )}
                   </pre>
                 </div>
               )}

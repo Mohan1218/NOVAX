@@ -16,14 +16,30 @@ app = FastAPI(
 )
 
 
+import os
+
+frontend_origin = os.getenv("FRONTEND_ORIGIN")
+allowed_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+]
+if frontend_origin:
+    allowed_origins.append(frontend_origin)
+    # also add trailing slash variant or wildcards if appropriate
+    if not frontend_origin.endswith('/'):
+        allowed_origins.append(f"{frontend_origin}/")
+
 # Allow React frontend to communicate with FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins if frontend_origin else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Register routers
 app.include_router(execution_router)

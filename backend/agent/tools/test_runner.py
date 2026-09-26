@@ -86,9 +86,10 @@ class TestRunnerTool(BaseTool):
             json_report.close()
             json_path = Path(json_report.name)
 
+        import sys
         # Build the pytest command
         cmd_parts = [
-            "python", "-m", "pytest",
+            sys.executable, "-m", "pytest",
             "--tb=short",
             "-q",
         ]

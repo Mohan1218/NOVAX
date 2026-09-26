@@ -79,8 +79,9 @@ class PythonRunnerTool(BaseTool):
             tmp.flush()
             tmp.close()
 
+            import sys
             proc = await asyncio.create_subprocess_exec(
-                "python",
+                sys.executable,
                 tmp.name,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
