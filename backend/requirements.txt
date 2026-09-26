@@ -1,0 +1,11 @@
+# ── LLM Providers ──────────────────────────────────
+openai>=1.30.0
+google-generativeai>=0.7.0
+anthropic>=0.28.0
+
+# ── Utilities ──────────────────────────────────────
+python-dotenv>=1.0.0
+pydantic>=2.7.0
+
+# ── Testing (dev) ─────────────────────────────────
+pytest>=8.2.0

@@ -1,0 +1,42 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Test / coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+*.env
+
+# Backup files created by patch_code
+*.bak
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Scratch / debug scripts (temporary)
+debug_fix.py
+fix_patch_logic.py
+test_regex.py
+test_regex2.py
+
+# test_sandbox (ephemeral sandbox files)
+test_sandbox/
